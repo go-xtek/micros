@@ -7,7 +7,6 @@ import (
 	"github.com/gidyon/micros/pkg/grpc/middleware"
 	microtls "github.com/gidyon/micros/pkg/tls"
 	"github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -19,15 +18,6 @@ func NewGRPCServer(
 	unaryInterceptors []grpc.UnaryServerInterceptor,
 	streamInterceptors []grpc.StreamServerInterceptor,
 ) (*grpc.Server, error) {
-
-	if cfg.Logging() {
-		// Initialize logger
-		err := logger.Init(cfg.LogLevel(), cfg.LogTimeFormat())
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to initialize logger")
-		}
-	}
-
 	// Create TLS object for gRPC server
 	tlsConfig, err := microtls.GRPCServerConfig()
 	if err != nil {
@@ -41,8 +31,12 @@ func NewGRPCServer(
 		grpc.Creds(creds),
 	}
 
-	// add logging middleware
-	unaryLoggerInterceptors, streamLoggerInterceptors := middleware.AddLogging(logger.Log)
+	var unaryLoggerInterceptors []grpc.UnaryServerInterceptor
+	var streamLoggerInterceptors []grpc.StreamServerInterceptor
+	if cfg.Logging() {
+		// add logging middleware
+		unaryLoggerInterceptors, streamLoggerInterceptors = middleware.AddLogging(logger.Log)
+	}
 
 	// add recovery from panic middleware
 	unaryRecoveryInterceptors, streamRecoveryInterceptors := middleware.AddRecovery()
