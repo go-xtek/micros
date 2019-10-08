@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/RediSearch/redisearch-go/redisearch"
+	"github.com/Sirupsen/logrus"
 	"github.com/gidyon/config"
+	"github.com/gidyon/logger"
 	"github.com/gidyon/micros/pkg/conn"
 	microtls "github.com/gidyon/micros/pkg/tls"
 	"github.com/go-redis/redis"
@@ -49,6 +51,14 @@ func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
 
 	// Initialize paths to cert and key
 	microtls.SetKeyAndCertPaths(cfg.ServiceTLSKeyFile(), cfg.ServiceTLSCertFile())
+
+	if cfg.Logging() {
+		// Initialize logger
+		err := logger.Init(cfg.LogLevel(), cfg.LogTimeFormat())
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to initialize logger")
+		}
+	}
 
 	var (
 		err                     error
@@ -106,13 +116,14 @@ func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
 		rediSearchClient = redisearch.NewClient(cfg.RedisURL(), cfg.ServiceName()+":index")
 	}
 
+	logrus.Infoln("auth cert: ", cfg.AuthenticationTLSCertFile())
 	// Remote services
 	if cfg.RequireAuthentication() {
 		accountsServiceConn, err = conn.DialAccountService(ctx, &conn.GRPCDialOptions{
 			Address:     cfg.AuthenticationAddress(),
 			TLSCertFile: cfg.AuthenticationTLSCertFile(),
 			ServerName:  cfg.AuthenticationTLSServerName(),
-			WithBlock:   true,
+			WithBlock:   false,
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create connection to accounts service")
@@ -124,7 +135,7 @@ func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
 			Address:     cfg.NotificationAddress(),
 			TLSCertFile: cfg.NotificationTLSCertFile(),
 			ServerName:  cfg.NotificationTLSServerName(),
-			WithBlock:   true,
+			WithBlock:   false,
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to connect to notification service")
