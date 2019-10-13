@@ -120,6 +120,7 @@ type GRPCDialOptions struct {
 	TLSCertFile string
 	ServerName  string
 	WithBlock   bool
+	DialOptions []grpc.DialOption
 }
 
 // DialAccountService dials to authentication service and returns the grpc client connection
@@ -154,6 +155,10 @@ func DialService(ctx context.Context, opt *GRPCDialOptions) (*grpc.ClientConn, e
 
 	if opt.WithBlock {
 		dopts = append(dopts, grpc.WithBlock())
+	}
+
+	if opt.DialOptions != nil && len(opt.DialOptions) > 0 {
+		dopts = append(dopts, opt.DialOptions...)
 	}
 
 	return grpc.DialContext(ctx, opt.Address, dopts...)
