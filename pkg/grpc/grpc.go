@@ -5,7 +5,7 @@ import (
 	"github.com/gidyon/config"
 	"github.com/gidyon/logger"
 	"github.com/gidyon/micros/pkg/grpc/middleware"
-	microtls "github.com/gidyon/micros/pkg/tls"
+	microtls "github.com/gidyon/micros/utils/tls"
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

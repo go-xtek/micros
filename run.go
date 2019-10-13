@@ -8,7 +8,7 @@ import (
 	"github.com/gidyon/logger"
 	service_grpc "github.com/gidyon/micros/pkg/grpc"
 	http_middleware "github.com/gidyon/micros/pkg/http"
-	micro_tls "github.com/gidyon/micros/pkg/tls"
+	micro_tls "github.com/gidyon/micros/utils/tls"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/reflection"

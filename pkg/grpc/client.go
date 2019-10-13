@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/gidyon/config"
-	microtls "github.com/gidyon/micros/pkg/tls"
+	microtls "github.com/gidyon/micros/utils/tls"
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"

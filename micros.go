@@ -8,7 +8,7 @@ import (
 	"github.com/gidyon/config"
 	"github.com/gidyon/logger"
 	"github.com/gidyon/micros/pkg/conn"
-	microtls "github.com/gidyon/micros/pkg/tls"
+	microtls "github.com/gidyon/micros/utils/tls"
 	"github.com/go-redis/redis"
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
