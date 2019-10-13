@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/RediSearch/redisearch-go/redisearch"
-	"github.com/Sirupsen/logrus"
 	"github.com/gidyon/config"
 	"github.com/gidyon/logger"
 	"github.com/gidyon/micros/pkg/conn"
@@ -116,7 +115,6 @@ func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
 		rediSearchClient = redisearch.NewClient(cfg.RedisURL(), cfg.ServiceName()+":index")
 	}
 
-	logrus.Infoln("auth cert: ", cfg.AuthenticationTLSCertFile())
 	// Remote services
 	if cfg.RequireAuthentication() {
 		accountsServiceConn, err = conn.DialAccountService(ctx, &conn.GRPCDialOptions{
@@ -235,6 +233,11 @@ func (microsAPI *APIs) AddUnaryClientInterceptorsGRPC(
 			microsAPI.gRPCUnaryClientInterceptors, unaryInterceptor,
 		)
 	}
+}
+
+// Config returns the config for the service
+func (microsAPI *APIs) Config() *config.Config {
+	return microsAPI.cfg
 }
 
 // HTTPMux returns the http muxer for the service
