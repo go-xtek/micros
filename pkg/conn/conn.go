@@ -115,6 +115,7 @@ func NewRedisClient(opt *RedisOptions) *redis.Client {
 
 // GRPCDialOptions contains options for dialing a remote connection
 type GRPCDialOptions struct {
+	ServiceName string
 	Address     string
 	TLSCertFile string
 	ServerName  string
@@ -123,9 +124,19 @@ type GRPCDialOptions struct {
 
 // DialAccountService dials to authentication service and returns the grpc client connection
 func DialAccountService(ctx context.Context, opt *GRPCDialOptions) (*grpc.ClientConn, error) {
+	return DialService(ctx, opt)
+}
+
+// DialNotificationService dials to notification service and returns the grpc client connection
+func DialNotificationService(ctx context.Context, opt *GRPCDialOptions) (*grpc.ClientConn, error) {
+	return DialService(ctx, opt)
+}
+
+// DialService dials to any remote service and returns the grpc client connection
+func DialService(ctx context.Context, opt *GRPCDialOptions) (*grpc.ClientConn, error) {
 	creds, err := credentials.NewClientTLSFromFile(opt.TLSCertFile, opt.ServerName)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create tls config for account service")
+		return nil, errors.Wrapf(err, "failed to create tls config for %s service", opt.ServerName)
 	}
 
 	dopts := []grpc.DialOption{
@@ -134,29 +145,6 @@ func DialAccountService(ctx context.Context, opt *GRPCDialOptions) (*grpc.Client
 		// Load balancer scheme
 		grpc.WithBalancerName(roundrobin.Name),
 		// Other interceptors
-		grpc.WithUnaryInterceptor(
-			grpc_middleware.ChainUnaryClient(
-				waitForReadyInterceptor,
-			),
-		),
-	}
-
-	if opt.WithBlock {
-		dopts = append(dopts, grpc.WithBlock())
-	}
-
-	return grpc.DialContext(ctx, opt.Address, dopts...)
-}
-
-// DialNotificationService dials to notification service and returns the grpc client connection
-func DialNotificationService(ctx context.Context, opt *GRPCDialOptions) (*grpc.ClientConn, error) {
-	creds, err := credentials.NewClientTLSFromFile(opt.TLSCertFile, opt.ServerName)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create tls config for notification service")
-	}
-
-	dopts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
 		grpc.WithUnaryInterceptor(
 			grpc_middleware.ChainUnaryClient(
 				waitForReadyInterceptor,
