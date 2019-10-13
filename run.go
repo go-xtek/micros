@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/Sirupsen/logrus"
 	"github.com/gidyon/logger"
 	service_grpc "github.com/gidyon/micros/pkg/grpc"
 	http_middleware "github.com/gidyon/micros/pkg/http"
@@ -68,11 +69,18 @@ func (microsAPI *APIs) Run(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create TLS config for HTTP server")
 	}
 
-	logger.Log.Info(
-		"<gRPC and REST> server for service running",
-		zap.String("service name", microsAPI.cfg.ServiceName()),
-		zap.Int("gRPC Port", microsAPI.cfg.ServicePort()),
-	)
+	if microsAPI.cfg.Logging() {
+		logger.Log.Info(
+			"<gRPC and REST> server for service running",
+			zap.String("service name", microsAPI.cfg.ServiceName()),
+			zap.Int("gRPC Port", microsAPI.cfg.ServicePort()),
+		)
+	} else {
+		logrus.Infof(
+			"<gRPC and REST> server for service running service: %s port: %d",
+			microsAPI.cfg.ServiceName(), microsAPI.cfg.ServicePort(),
+		)
+	}
 
 	return httpServer.Serve(tls.NewListener(lis, serverTLSsConfig))
 }
