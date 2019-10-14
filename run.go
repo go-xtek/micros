@@ -23,18 +23,18 @@ import (
 )
 
 // Run multiplexes GRPC and HTTP server on the same port
-func (microsAPI *APIs) Run(ctx context.Context) error {
+func (service *Service) Run(ctx context.Context) error {
 
 	// Add middlewares
-	microsAPI.AddHTTPMiddlewares(http_middleware.AddRequestID)
+	service.AddHTTPMiddlewares(http_middleware.AddRequestID)
 
 	// the grpcHandlerFunc takes an grpc server and a http muxer and will
 	// route the request to the right place at runtime.
-	mergeHandler := grpcHandlerFunc(microsAPI.GRPCServer(), microsAPI.HTTPMux())
+	mergeHandler := grpcHandlerFunc(service.GRPCServer(), service.HTTPMux())
 
 	// HTTP server configuration
 	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%d", microsAPI.cfg.ServicePort()),
+		Addr:              fmt.Sprintf(":%d", service.cfg.ServicePort()),
 		Handler:           mergeHandler,
 		ReadTimeout:       time.Duration(5 * time.Second),
 		ReadHeaderTimeout: time.Duration(5 * time.Second),
@@ -46,9 +46,9 @@ func (microsAPI *APIs) Run(ctx context.Context) error {
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		for range c {
-			if microsAPI.cfg.Logging() {
+			if service.cfg.Logging() {
 				logger.Log.Warn(
-					"shutting service...", zap.String("service name", microsAPI.cfg.ServiceName()),
+					"shutting service...", zap.String("service name", service.cfg.ServiceName()),
 				)
 			}
 			httpServer.Shutdown(ctx)
@@ -58,7 +58,7 @@ func (microsAPI *APIs) Run(ctx context.Context) error {
 	}()
 
 	// Create TCP listener
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", microsAPI.cfg.ServicePort()))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", service.cfg.ServicePort()))
 	if err != nil {
 		return errors.Wrap(err, "failed to create TCP listener")
 	}
@@ -69,16 +69,16 @@ func (microsAPI *APIs) Run(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create TLS config for HTTP server")
 	}
 
-	if microsAPI.cfg.Logging() {
+	if service.cfg.Logging() {
 		logger.Log.Info(
 			"<gRPC and REST> server for service running",
-			zap.String("service name", microsAPI.cfg.ServiceName()),
-			zap.Int("gRPC Port", microsAPI.cfg.ServicePort()),
+			zap.String("service name", service.cfg.ServiceName()),
+			zap.Int("gRPC Port", service.cfg.ServicePort()),
 		)
 	} else {
 		logrus.Infof(
 			"<gRPC and REST> server for service running service: %s port: %d",
-			microsAPI.cfg.ServiceName(), microsAPI.cfg.ServicePort(),
+			service.cfg.ServiceName(), service.cfg.ServicePort(),
 		)
 	}
 
@@ -102,23 +102,23 @@ func grpcHandlerFunc(grpcServer *grpc.Server, otherHandler http.Handler) http.Ha
 // InitGRPC initialize gRPC server and client with registered client and server interceptors and options.
 // The method must be called before registering anything on the gRPC server or gRPC client connection.
 // When this method has been called, subsequent calls to add interceptors and/or options will not update
-func (microsAPI *APIs) InitGRPC(ctx context.Context) error {
+func (service *Service) InitGRPC(ctx context.Context) error {
 	// client connection for the reverse gateway
 	clientConn, err := service_grpc.NewGRPCClientConn(
-		microsAPI.cfg,
-		microsAPI.dialOptions,
-		microsAPI.gRPCUnaryClientInterceptors,
-		microsAPI.grpcStreamClientInterceptors,
+		service.cfg,
+		service.dialOptions,
+		service.gRPCUnaryClientInterceptors,
+		service.grpcStreamClientInterceptors,
 	)
 	if err != nil {
 		return err
 	}
 
-	microsAPI.clientConn = clientConn
+	service.clientConn = clientConn
 
 	// create gRPC server for service
 	grpcSrv, err := service_grpc.NewGRPCServer(
-		ctx, microsAPI.cfg, microsAPI.gRPCUnaryInterceptors, microsAPI.gRPCStreamInterceptors,
+		ctx, service.cfg, service.gRPCUnaryInterceptors, service.gRPCStreamInterceptors,
 	)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func (microsAPI *APIs) InitGRPC(ctx context.Context) error {
 	// register reflection on the gRPC server
 	reflection.Register(grpcSrv)
 
-	microsAPI.gRPCServer = grpcSrv
+	service.gRPCServer = grpcSrv
 
 	return nil
 }

@@ -23,8 +23,8 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 )
 
-// APIs contains API clients, connections and options for bootstrapping a micro-service
-type APIs struct {
+// Service contains API clients, connections and options for bootstrapping a micro-service
+type Service struct {
 	cfg                          *config.Config
 	db                           *gorm.DB // uses gorm
 	sqlDB                        *sql.DB  // uses database/sql driver
@@ -46,7 +46,7 @@ type APIs struct {
 }
 
 // NewService create a new micro-service based on the options passed in config
-func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
+func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 
 	// Initialize paths to cert and key
 	microtls.SetKeyAndCertPaths(cfg.ServiceTLSKeyFile(), cfg.ServiceTLSCertFile())
@@ -143,7 +143,7 @@ func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
 	// Update the rest client
 	runtimeMux := newRuntimeMux()
 
-	return &APIs{
+	return &Service{
 		cfg:                          cfg,
 		db:                           db,
 		sqlDB:                        sqlDB,
@@ -163,136 +163,136 @@ func NewService(ctx context.Context, cfg *config.Config) (*APIs, error) {
 }
 
 // RegisterHTTPMux registers the http muxer to the service.
-func (microsAPI *APIs) RegisterHTTPMux(mux *http.ServeMux) {
-	mux.Handle("/", microsAPI.runtimeMux)
-	microsAPI.httpMux = mux
+func (service *Service) RegisterHTTPMux(mux *http.ServeMux) {
+	mux.Handle("/", service.runtimeMux)
+	service.httpMux = mux
 }
 
 type httpMiddleware func(http.Handler) http.Handler
 
 // AddHTTPMiddlewares adds middlewares to the service http handler
-func (microsAPI *APIs) AddHTTPMiddlewares(middlewares ...httpMiddleware) {
+func (service *Service) AddHTTPMiddlewares(middlewares ...httpMiddleware) {
 	for _, httpMiddleware := range middlewares {
-		httpMiddleware(microsAPI.HTTPMux())
+		httpMiddleware(service.HTTPMux())
 	}
 }
 
 // AddDialOptionsGRPC adds dial options to gRPC reverse proxy client
-func (microsAPI *APIs) AddDialOptionsGRPC(dialOptions ...grpc.DialOption) {
+func (service *Service) AddDialOptionsGRPC(dialOptions ...grpc.DialOption) {
 	for _, dialOption := range dialOptions {
-		microsAPI.dialOptions = append(microsAPI.dialOptions, dialOption)
+		service.dialOptions = append(service.dialOptions, dialOption)
 	}
 }
 
 // AddServerOptionsGRPC adds server options to gRPC server
-func (microsAPI *APIs) AddServerOptionsGRPC(serverOptions ...grpc.ServerOption) {
+func (service *Service) AddServerOptionsGRPC(serverOptions ...grpc.ServerOption) {
 	for _, serverOption := range serverOptions {
-		microsAPI.serverOption = append(microsAPI.serverOption, serverOption)
+		service.serverOption = append(service.serverOption, serverOption)
 	}
 }
 
 // AddStreamServerInterceptorsGRPC adds stream interceptors to the gRPC server
-func (microsAPI *APIs) AddStreamServerInterceptorsGRPC(
+func (service *Service) AddStreamServerInterceptorsGRPC(
 	streamInterceptors ...grpc.StreamServerInterceptor,
 ) {
 	for _, streamInterceptor := range streamInterceptors {
-		microsAPI.gRPCStreamInterceptors = append(
-			microsAPI.gRPCStreamInterceptors, streamInterceptor,
+		service.gRPCStreamInterceptors = append(
+			service.gRPCStreamInterceptors, streamInterceptor,
 		)
 	}
 }
 
 // AddUnaryServerInterceptorsGRPC adds unary interceptors to the gRPC server
-func (microsAPI *APIs) AddUnaryServerInterceptorsGRPC(
+func (service *Service) AddUnaryServerInterceptorsGRPC(
 	unaryInterceptors ...grpc.UnaryServerInterceptor,
 ) {
 	for _, unaryInterceptor := range unaryInterceptors {
-		microsAPI.gRPCUnaryInterceptors = append(
-			microsAPI.gRPCUnaryInterceptors, unaryInterceptor,
+		service.gRPCUnaryInterceptors = append(
+			service.gRPCUnaryInterceptors, unaryInterceptor,
 		)
 	}
 }
 
 // AddStreamClientInterceptorsGRPC adds stream interceptors to the gRPC reverse proxy client
-func (microsAPI *APIs) AddStreamClientInterceptorsGRPC(
+func (service *Service) AddStreamClientInterceptorsGRPC(
 	streamInterceptors ...grpc.StreamClientInterceptor,
 ) {
 	for _, streamInterceptor := range streamInterceptors {
-		microsAPI.grpcStreamClientInterceptors = append(
-			microsAPI.grpcStreamClientInterceptors, streamInterceptor,
+		service.grpcStreamClientInterceptors = append(
+			service.grpcStreamClientInterceptors, streamInterceptor,
 		)
 	}
 }
 
 // AddUnaryClientInterceptorsGRPC adds unary interceptors to the gRPC reverse proxy client
-func (microsAPI *APIs) AddUnaryClientInterceptorsGRPC(
+func (service *Service) AddUnaryClientInterceptorsGRPC(
 	unaryInterceptors ...grpc.UnaryClientInterceptor,
 ) {
 	for _, unaryInterceptor := range unaryInterceptors {
-		microsAPI.gRPCUnaryClientInterceptors = append(
-			microsAPI.gRPCUnaryClientInterceptors, unaryInterceptor,
+		service.gRPCUnaryClientInterceptors = append(
+			service.gRPCUnaryClientInterceptors, unaryInterceptor,
 		)
 	}
 }
 
 // Config returns the config for the service
-func (microsAPI *APIs) Config() *config.Config {
-	return microsAPI.cfg
+func (service *Service) Config() *config.Config {
+	return service.cfg
 }
 
 // HTTPMux returns the http muxer for the service
-func (microsAPI *APIs) HTTPMux() *http.ServeMux {
-	return microsAPI.httpMux
+func (service *Service) HTTPMux() *http.ServeMux {
+	return service.httpMux
 }
 
 // RuntimeMux returns the runtime muxer for the service
-func (microsAPI *APIs) RuntimeMux() *runtime.ServeMux {
-	return microsAPI.runtimeMux
+func (service *Service) RuntimeMux() *runtime.ServeMux {
+	return service.runtimeMux
 }
 
 // ClientConn returns the underlying client connection to grpc server used by reverse proxy
-func (microsAPI *APIs) ClientConn() *grpc.ClientConn {
-	return microsAPI.clientConn
+func (service *Service) ClientConn() *grpc.ClientConn {
+	return service.clientConn
 }
 
 // GRPCServer returns the grpc server
-func (microsAPI *APIs) GRPCServer() *grpc.Server {
-	return microsAPI.gRPCServer
+func (service *Service) GRPCServer() *grpc.Server {
+	return service.gRPCServer
 }
 
 // DB returns a gorm db instance
-func (microsAPI *APIs) DB() *gorm.DB {
-	return microsAPI.db
+func (service *Service) DB() *gorm.DB {
+	return service.db
 }
 
 // SQLDB returns database/sql db instance
-func (microsAPI *APIs) SQLDB() *sql.DB {
-	return microsAPI.sqlDB
+func (service *Service) SQLDB() *sql.DB {
+	return service.sqlDB
 }
 
 // RedisClient returns a redis client
-func (microsAPI *APIs) RedisClient() *redis.Client {
-	return microsAPI.redisClient
+func (service *Service) RedisClient() *redis.Client {
+	return service.redisClient
 }
 
 // RediSearchClient returns redisearch client
-func (microsAPI *APIs) RediSearchClient() *redisearch.Client {
-	return microsAPI.rediSearchClient
+func (service *Service) RediSearchClient() *redisearch.Client {
+	return service.rediSearchClient
 }
 
 // AdminAccountClient returns admin account API for authentication
-func (microsAPI *APIs) AdminAccountClient() admin.AdminAPIClient {
-	return microsAPI.adminAccountsClient
+func (service *Service) AdminAccountClient() admin.AdminAPIClient {
+	return service.adminAccountsClient
 }
 
 // NotificationClient returns the notification client
-func (microsAPI *APIs) NotificationClient() notification.NotificationServiceClient {
-	return microsAPI.notificationClient
+func (service *Service) NotificationClient() notification.NotificationServiceClient {
+	return service.notificationClient
 }
 
 // UserAccountClient returns user account client API for authentication
-func (microsAPI *APIs) UserAccountClient() user.UserAPIClient {
-	return microsAPI.userAccountsClient
+func (service *Service) UserAccountClient() user.UserAPIClient {
+	return service.userAccountsClient
 }
 
 // creates a http Muxer using runtime.NewServeMux
