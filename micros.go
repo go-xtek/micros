@@ -12,6 +12,7 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
+	"strings"
 
 	"net/http"
 
@@ -37,6 +38,7 @@ type Service struct {
 	runtimeMux                   *runtime.ServeMux
 	clientConn                   *grpc.ClientConn
 	gRPCServer                   *grpc.Server
+	externalServicesConn         map[string]*grpc.ClientConn
 	gRPCUnaryInterceptors        []grpc.UnaryServerInterceptor
 	gRPCStreamInterceptors       []grpc.StreamServerInterceptor
 	serverOption                 []grpc.ServerOption
@@ -65,20 +67,22 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		sqlDB                   *sql.DB
 		redisClient             *redis.Client
 		rediSearchClient        *redisearch.Client
+		externalServices        = make(map[string]*grpc.ClientConn)
 		accountsServiceConn     *grpc.ClientConn
 		notificationServiceConn *grpc.ClientConn
 	)
 
 	if cfg.UseSQLDatabase() {
-		if cfg.UseGorm() {
+		sqlDBInfo := cfg.SQLDatabase()
+		if sqlDBInfo.UseGorm() {
 			// Create a *sql.DB instance
 			db, err = conn.ToSQLDBUsingORM(&conn.DBOptions{
-				Dialect:  cfg.SQLDatabaseDialect(),
-				Host:     cfg.SQLDatabaseHost(),
-				Port:     fmt.Sprintf("%d", cfg.SQLDatabasePort()),
-				User:     cfg.SQLDatabaseUser(),
-				Password: cfg.SQLDatabasePassword(),
-				Schema:   cfg.SQLDatabaseSchema(),
+				Dialect:  sqlDBInfo.SQLDatabaseDialect(),
+				Host:     sqlDBInfo.Host(),
+				Port:     fmt.Sprintf("%d", sqlDBInfo.Port()),
+				User:     sqlDBInfo.User(),
+				Password: sqlDBInfo.Password(),
+				Schema:   sqlDBInfo.Schema(),
 			})
 			if err != nil {
 				return nil, err
@@ -87,56 +91,57 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		} else {
 			// Create a *sql.DB instance
 			sqlDB, err = conn.ToSQLDB(&conn.DBOptions{
-				Dialect:  cfg.SQLDatabaseDialect(),
-				Host:     cfg.SQLDatabaseHost(),
-				Port:     fmt.Sprintf("%d", cfg.SQLDatabasePort()),
-				User:     cfg.SQLDatabaseUser(),
-				Password: cfg.SQLDatabasePassword(),
-				Schema:   cfg.SQLDatabaseSchema(),
+				Dialect:  sqlDBInfo.SQLDatabaseDialect(),
+				Host:     sqlDBInfo.Host(),
+				Port:     fmt.Sprintf("%d", sqlDBInfo.Port()),
+				User:     sqlDBInfo.User(),
+				Password: sqlDBInfo.Password(),
+				Schema:   sqlDBInfo.Schema(),
 			})
 			if err != nil {
 				return nil, err
 			}
 			db = nil
 		}
-
 	}
 
 	if cfg.UseRedis() {
+		redisDBInfo := cfg.RedisDatabase()
+
 		// Creates a redis client
 		redisClient = conn.NewRedisClient(&conn.RedisOptions{
-			Address: cfg.RedisHost(),
-			Port:    fmt.Sprintf("%d", cfg.RedisPort()),
+			Address: redisDBInfo.Address(),
+			Port:    fmt.Sprintf("%d", redisDBInfo.Port()),
 		})
-	}
 
-	if cfg.UseRediSearch() {
-		// Create a redisearch client
-		rediSearchClient = redisearch.NewClient(cfg.RedisURL(), cfg.ServiceName()+":index")
-	}
-
-	// Remote services
-	if cfg.RequireAuthentication() {
-		accountsServiceConn, err = conn.DialAccountService(ctx, &conn.GRPCDialOptions{
-			Address:     cfg.AuthenticationAddress(),
-			TLSCertFile: cfg.AuthenticationTLSCertFile(),
-			ServerName:  cfg.AuthenticationTLSServerName(),
-			WithBlock:   false,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create connection to accounts service")
+		if cfg.UseRediSearch() {
+			// Create a redisearch client
+			rediSearchClient = redisearch.NewClient(redisDBInfo.Address(), cfg.ServiceName()+":index")
 		}
 	}
 
-	if cfg.UseNotifications() {
-		notificationServiceConn, err = conn.DialNotificationService(ctx, &conn.GRPCDialOptions{
-			Address:     cfg.NotificationAddress(),
-			TLSCertFile: cfg.NotificationTLSCertFile(),
-			ServerName:  cfg.NotificationTLSServerName(),
+	// Remote services
+	for _, srv := range cfg.ExternalServices() {
+		if !srv.Available() {
+			continue
+		}
+		serviceConn, err := conn.DialService(ctx, &conn.GRPCDialOptions{
+			ServiceName: srv.Name(),
+			Address:     srv.Address(),
+			TLSCertFile: srv.TLSCertFile(),
+			ServerName:  srv.ServerName(),
 			WithBlock:   false,
+			K8Service:   srv.K8Service(),
 		})
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to connect to notification service")
+			return nil, errors.Wrapf(err, "failed to create connection to service %s", srv.Name())
+		}
+		externalServices[strings.ToLower(srv.Name())] = serviceConn
+		switch strings.ToLower(srv.Type()) {
+		case config.ServiceTypeAuthentication:
+			accountsServiceConn = serviceConn
+		case config.ServiceTypeNotification:
+			notificationServiceConn = serviceConn
 		}
 	}
 
@@ -153,6 +158,7 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		userAccountsClient:           user.NewUserAPIClient(accountsServiceConn),
 		notificationClient:           notification.NewNotificationServiceClient(notificationServiceConn),
 		runtimeMux:                   runtimeMux,
+		externalServicesConn:         externalServices,
 		gRPCUnaryInterceptors:        make([]grpc.UnaryServerInterceptor, 0),
 		gRPCStreamInterceptors:       make([]grpc.StreamServerInterceptor, 0),
 		serverOption:                 make([]grpc.ServerOption, 0),
@@ -293,6 +299,15 @@ func (service *Service) NotificationClient() notification.NotificationServiceCli
 // UserAccountClient returns user account client API for authentication
 func (service *Service) UserAccountClient() user.UserAPIClient {
 	return service.userAccountsClient
+}
+
+// ExternalServiceConn returns the underlying grpc connection to the external service
+func (service *Service) ExternalServiceConn(serviceName string) (*grpc.ClientConn, error) {
+	cc, ok := service.externalServicesConn[strings.ToLower(serviceName)]
+	if !ok {
+		return nil, errors.Errorf("no service exists with name: %s", serviceName)
+	}
+	return cc, nil
 }
 
 // creates a http Muxer using runtime.NewServeMux
