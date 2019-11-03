@@ -22,7 +22,7 @@ const (
 // ProbeOptions contains data and options required for doing healthcheck
 type ProbeOptions struct {
 	successMsg   string
-	Service      *micros.APIs
+	Service      *micros.Service
 	AutoMigrator func() error
 	Type         string
 }
@@ -104,8 +104,8 @@ func RegisterProbe(opt *ProbeOptions) http.HandlerFunc {
 		wg := &sync.WaitGroup{}
 
 		// check external services
-		for _, extSrv := range cfg.ExternalServices {
-			if !extSrv.Available {
+		for _, extSrv := range cfg.ExternalServices() {
+			if !extSrv.Available() {
 				continue
 			}
 			wg.Add(1)
@@ -115,14 +115,15 @@ func RegisterProbe(opt *ProbeOptions) http.HandlerFunc {
 				defer wg.Done()
 
 				cc, err := conn.DialService(nCtx, &conn.GRPCDialOptions{
-					Address:     extSrv.Address,
-					TLSCertFile: extSrv.TLSCertFile,
-					ServerName:  extSrv.ServerName,
+					Address:     extSrv.Address(),
+					TLSCertFile: extSrv.TLSCertFile(),
+					ServerName:  extSrv.ServerName(),
 					WithBlock:   true,
+					K8Service:   extSrv.K8Service(),
 				})
 				if err != nil {
 					mu.Lock()
-					errMsg = fmt.Sprintf("failed to connect to %s service: %v", extSrv.Name, err)
+					errMsg = fmt.Sprintf("failed to connect to %s service: %v", extSrv.Name(), err)
 					errs = append(errs, errMsg)
 					mu.Unlock()
 				} else {
