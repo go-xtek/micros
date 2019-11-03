@@ -121,6 +121,7 @@ type GRPCDialOptions struct {
 	ServerName  string
 	WithBlock   bool
 	DialOptions []grpc.DialOption
+	K8Service   bool
 }
 
 // DialAccountService dials to authentication service and returns the grpc client connection
@@ -159,6 +160,12 @@ func DialService(ctx context.Context, opt *GRPCDialOptions) (*grpc.ClientConn, e
 
 	if opt.DialOptions != nil && len(opt.DialOptions) > 0 {
 		dopts = append(dopts, opt.DialOptions...)
+	}
+
+	// Address for dialing the kubernetes service
+	if opt.K8Service {
+		opt.Address = strings.TrimSuffix(opt.Address, "dns:///")
+		opt.Address = "dns:///" + opt.Address
 	}
 
 	return grpc.DialContext(ctx, opt.Address, dopts...)
