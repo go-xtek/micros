@@ -18,9 +18,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/gidyon/account/pkg/api/admin"
-	"github.com/gidyon/account/pkg/api/user"
-	"github.com/gidyon/notification/pkg/api"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 )
 
@@ -31,9 +28,6 @@ type Service struct {
 	sqlDB                        *sql.DB  // uses database/sql driver
 	redisClient                  *redis.Client
 	rediSearchClient             *redisearch.Client
-	notificationClient           notification.NotificationServiceClient
-	adminAccountsClient          admin.AdminAPIClient
-	userAccountsClient           user.UserAPIClient
 	httpMux                      *http.ServeMux
 	runtimeMux                   *runtime.ServeMux
 	clientConn                   *grpc.ClientConn
@@ -62,14 +56,12 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 	}
 
 	var (
-		err                     error
-		db                      *gorm.DB
-		sqlDB                   *sql.DB
-		redisClient             *redis.Client
-		rediSearchClient        *redisearch.Client
-		externalServices        = make(map[string]*grpc.ClientConn)
-		accountsServiceConn     *grpc.ClientConn
-		notificationServiceConn *grpc.ClientConn
+		err              error
+		db               *gorm.DB
+		sqlDB            *sql.DB
+		redisClient      *redis.Client
+		rediSearchClient *redisearch.Client
+		externalServices = make(map[string]*grpc.ClientConn)
 	)
 
 	if cfg.UseSQLDatabase() {
@@ -110,13 +102,15 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 
 		// Creates a redis client
 		redisClient = conn.NewRedisClient(&conn.RedisOptions{
-			Address: redisDBInfo.Address(),
+			Address: redisDBInfo.Host(),
 			Port:    fmt.Sprintf("%d", redisDBInfo.Port()),
 		})
 
 		if cfg.UseRediSearch() {
 			// Create a redisearch client
-			rediSearchClient = redisearch.NewClient(redisDBInfo.Address(), cfg.ServiceName()+":index")
+			rediSearchClient = redisearch.NewClient(
+				redisDBInfo.Address(), cfg.ServiceName()+":index",
+			)
 		}
 	}
 
@@ -125,7 +119,7 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		if !srv.Available() {
 			continue
 		}
-		serviceConn, err := conn.DialService(ctx, &conn.GRPCDialOptions{
+		externalServices[strings.ToLower(srv.Name())], err = conn.DialService(ctx, &conn.GRPCDialOptions{
 			ServiceName: srv.Name(),
 			Address:     srv.Address(),
 			TLSCertFile: srv.TLSCertFile(),
@@ -135,13 +129,6 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		})
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to create connection to service %s", srv.Name())
-		}
-		externalServices[strings.ToLower(srv.Name())] = serviceConn
-		switch strings.ToLower(srv.Type()) {
-		case config.ServiceTypeAuthentication:
-			accountsServiceConn = serviceConn
-		case config.ServiceTypeNotification:
-			notificationServiceConn = serviceConn
 		}
 	}
 
@@ -154,9 +141,6 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		sqlDB:                        sqlDB,
 		redisClient:                  redisClient,
 		rediSearchClient:             rediSearchClient,
-		adminAccountsClient:          admin.NewAdminAPIClient(accountsServiceConn),
-		userAccountsClient:           user.NewUserAPIClient(accountsServiceConn),
-		notificationClient:           notification.NewNotificationServiceClient(notificationServiceConn),
 		runtimeMux:                   runtimeMux,
 		externalServicesConn:         externalServices,
 		gRPCUnaryInterceptors:        make([]grpc.UnaryServerInterceptor, 0),
@@ -183,22 +167,22 @@ func (service *Service) AddHTTPMiddlewares(middlewares ...httpMiddleware) {
 	}
 }
 
-// AddDialOptionsGRPC adds dial options to gRPC reverse proxy client
-func (service *Service) AddDialOptionsGRPC(dialOptions ...grpc.DialOption) {
+// AddGRPCDialOptions adds dial options to gRPC reverse proxy client
+func (service *Service) AddGRPCDialOptions(dialOptions ...grpc.DialOption) {
 	for _, dialOption := range dialOptions {
 		service.dialOptions = append(service.dialOptions, dialOption)
 	}
 }
 
-// AddServerOptionsGRPC adds server options to gRPC server
-func (service *Service) AddServerOptionsGRPC(serverOptions ...grpc.ServerOption) {
+// AddGRPCServerOptions adds server options to gRPC server
+func (service *Service) AddGRPCServerOptions(serverOptions ...grpc.ServerOption) {
 	for _, serverOption := range serverOptions {
 		service.serverOption = append(service.serverOption, serverOption)
 	}
 }
 
-// AddStreamServerInterceptorsGRPC adds stream interceptors to the gRPC server
-func (service *Service) AddStreamServerInterceptorsGRPC(
+// AddGRPCStreamServerInterceptors adds stream interceptors to the gRPC server
+func (service *Service) AddGRPCStreamServerInterceptors(
 	streamInterceptors ...grpc.StreamServerInterceptor,
 ) {
 	for _, streamInterceptor := range streamInterceptors {
@@ -208,8 +192,8 @@ func (service *Service) AddStreamServerInterceptorsGRPC(
 	}
 }
 
-// AddUnaryServerInterceptorsGRPC adds unary interceptors to the gRPC server
-func (service *Service) AddUnaryServerInterceptorsGRPC(
+// AddGRPCUnaryServerInterceptors adds unary interceptors to the gRPC server
+func (service *Service) AddGRPCUnaryServerInterceptors(
 	unaryInterceptors ...grpc.UnaryServerInterceptor,
 ) {
 	for _, unaryInterceptor := range unaryInterceptors {
@@ -219,8 +203,8 @@ func (service *Service) AddUnaryServerInterceptorsGRPC(
 	}
 }
 
-// AddStreamClientInterceptorsGRPC adds stream interceptors to the gRPC reverse proxy client
-func (service *Service) AddStreamClientInterceptorsGRPC(
+// AddGRPCStreamClientInterceptors adds stream interceptors to the gRPC reverse proxy client
+func (service *Service) AddGRPCStreamClientInterceptors(
 	streamInterceptors ...grpc.StreamClientInterceptor,
 ) {
 	for _, streamInterceptor := range streamInterceptors {
@@ -230,8 +214,8 @@ func (service *Service) AddStreamClientInterceptorsGRPC(
 	}
 }
 
-// AddUnaryClientInterceptorsGRPC adds unary interceptors to the gRPC reverse proxy client
-func (service *Service) AddUnaryClientInterceptorsGRPC(
+// AddGRPCUnaryClientInterceptors adds unary interceptors to the gRPC reverse proxy client
+func (service *Service) AddGRPCUnaryClientInterceptors(
 	unaryInterceptors ...grpc.UnaryClientInterceptor,
 ) {
 	for _, unaryInterceptor := range unaryInterceptors {
@@ -284,21 +268,6 @@ func (service *Service) RedisClient() *redis.Client {
 // RediSearchClient returns redisearch client
 func (service *Service) RediSearchClient() *redisearch.Client {
 	return service.rediSearchClient
-}
-
-// AdminAccountClient returns admin account API for authentication
-func (service *Service) AdminAccountClient() admin.AdminAPIClient {
-	return service.adminAccountsClient
-}
-
-// NotificationClient returns the notification client
-func (service *Service) NotificationClient() notification.NotificationServiceClient {
-	return service.notificationClient
-}
-
-// UserAccountClient returns user account client API for authentication
-func (service *Service) UserAccountClient() user.UserAPIClient {
-	return service.userAccountsClient
 }
 
 // ExternalServiceConn returns the underlying grpc connection to the external service
