@@ -8,6 +8,7 @@ import (
 	"github.com/gidyon/config"
 	"github.com/gidyon/logger"
 	"github.com/gidyon/micros/pkg/conn"
+	http_middleware "github.com/gidyon/micros/pkg/http"
 	microtls "github.com/gidyon/micros/utils/tls"
 	"github.com/go-redis/redis"
 	"github.com/jinzhu/gorm"
@@ -39,6 +40,7 @@ type Service struct {
 	gRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor
 	grpcStreamClientInterceptors []grpc.StreamClientInterceptor
 	dialOptions                  []grpc.DialOption
+	enableCORS                   bool
 }
 
 // NewService create a new micro-service based on the options passed in config
@@ -152,9 +154,23 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 	}, nil
 }
 
+// EnableCORS enables coss origin requests to service
+func (service *Service) EnableCORS() {
+	service.enableCORS = true
+}
+
+// DisableCORS disables cross origin requests on service
+func (service *Service) DisableCORS() {
+	service.enableCORS = false
+}
+
 // RegisterHTTPMux registers the http muxer to the service.
 func (service *Service) RegisterHTTPMux(mux *http.ServeMux) {
-	mux.Handle("/", service.runtimeMux)
+	if service.enableCORS {
+		mux.Handle("/", http_middleware.SupportCORS(service.runtimeMux))
+	} else {
+		mux.Handle("/", service.runtimeMux)
+	}
 	service.httpMux = mux
 }
 
