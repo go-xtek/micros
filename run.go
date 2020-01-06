@@ -23,7 +23,7 @@ import (
 )
 
 // Run multiplexes GRPC and HTTP server on the same port
-func (service *Service) Run(ctx context.Context) error {
+func (service *Service) Run(ctx context.Context, insecure bool) error {
 
 	// Add middlewares
 	service.AddHTTPMiddlewares(http_middleware.AddRequestID)
@@ -63,24 +63,33 @@ func (service *Service) Run(ctx context.Context) error {
 		return errors.Wrap(err, "failed to create TCP listener")
 	}
 
+	logMsgFn := func() {
+		if service.cfg.Logging() {
+			logger.Log.Info(
+				"<gRPC and REST> server for service running",
+				zap.String("service name", service.cfg.ServiceName()),
+				zap.Int("gRPC Port", service.cfg.ServicePort()),
+			)
+		} else {
+			logrus.Infof(
+				"<gRPC and REST> server for service running service: %s port: %d",
+				service.cfg.ServiceName(), service.cfg.ServicePort(),
+			)
+		}
+	}
+
+	if insecure {
+		logMsgFn()
+		return httpServer.Serve(lis)
+	}
+
 	// Parse HTTP server TLS config
 	serverTLSsConfig, err := micro_tls.HTTPServerConfig()
 	if err != nil {
 		return errors.Wrap(err, "failed to create TLS config for HTTP server")
 	}
 
-	if service.cfg.Logging() {
-		logger.Log.Info(
-			"<gRPC and REST> server for service running",
-			zap.String("service name", service.cfg.ServiceName()),
-			zap.Int("gRPC Port", service.cfg.ServicePort()),
-		)
-	} else {
-		logrus.Infof(
-			"<gRPC and REST> server for service running service: %s port: %d",
-			service.cfg.ServiceName(), service.cfg.ServicePort(),
-		)
-	}
+	logMsgFn()
 
 	return httpServer.Serve(tls.NewListener(lis, serverTLSsConfig))
 }
@@ -101,7 +110,7 @@ func grpcHandlerFunc(grpcServer *grpc.Server, otherHandler http.Handler) http.Ha
 
 // InitGRPC initialize gRPC server and client with registered client and server interceptors and options.
 // The method must be called before registering anything on the gRPC server or gRPC client connection.
-// When this method has been called, subsequent calls to add interceptors and/or options will not update
+// When this method has been called, subsequent calls to add interceptors and/or options will not update the service
 func (service *Service) InitGRPC(ctx context.Context) error {
 	// client connection for the reverse gateway
 	clientConn, err := service_grpc.NewGRPCClientConn(
