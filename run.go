@@ -24,18 +24,37 @@ import (
 
 // Run multiplexes GRPC and HTTP server on the same port
 func (service *Service) Run(ctx context.Context, insecure bool) error {
+	if service.baseEndpoint == "" {
+		service.baseEndpoint = "/"
+	}
+	// Registration of service endpoint
+	service.httpMux.Handle(service.baseEndpoint, service.runtimeMux)
 
-	// Add middlewares
-	service.AddHTTPMiddlewares(http_middleware.AddRequestID)
+	// Support CORS
+	if service.enableCORS {
+		service.httpMiddlewares = append(service.httpMiddlewares, http_middleware.SupportCORS)
+	}
+
+	handler := service.HTTPHandler()
+
+	// Apply middlewares
+	if len(service.httpMiddlewares) > 1 {
+		wrapped := handler
+		for i := len(service.httpMiddlewares) - 1; i >= 0; i-- {
+			wrapped = service.httpMiddlewares[i](wrapped)
+		}
+		handler = wrapped
+	}
 
 	// the grpcHandlerFunc takes an grpc server and a http muxer and will
 	// route the request to the right place at runtime.
-	mergeHandler := grpcHandlerFunc(service.GRPCServer(), service.HTTPMux())
+	// handler := grpcHandlerFunc(service.GRPCServer(), service.HTTPMux())
+	ghandler := grpcHandlerFunc(service.GRPCServer(), handler)
 
 	// HTTP server configuration
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", service.cfg.ServicePort()),
-		Handler:           mergeHandler,
+		Handler:           ghandler,
 		ReadTimeout:       time.Duration(5 * time.Second),
 		ReadHeaderTimeout: time.Duration(5 * time.Second),
 		WriteTimeout:      time.Duration(5 * time.Second),
@@ -78,8 +97,9 @@ func (service *Service) Run(ctx context.Context, insecure bool) error {
 		}
 	}
 
+	logMsgFn()
+
 	if insecure {
-		logMsgFn()
 		return httpServer.Serve(lis)
 	}
 
@@ -88,8 +108,6 @@ func (service *Service) Run(ctx context.Context, insecure bool) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create TLS config for HTTP server")
 	}
-
-	logMsgFn()
 
 	return httpServer.Serve(tls.NewListener(lis, serverTLSsConfig))
 }
