@@ -4,10 +4,11 @@ import (
 	"net/http"
 )
 
-type middleware func(http.Handler) http.Handler
+// Middleware is http middleware
+type Middleware func(http.Handler) http.Handler
 
 // Apply applies a chain of middleware in order
-func Apply(handler http.Handler, middlewares ...middleware) http.Handler {
+func Apply(handler http.Handler, middlewares ...Middleware) http.Handler {
 	if len(middlewares) < 1 {
 		return handler
 	}
