@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"fmt"
-	"github.com/gidyon/config"
 	microtls "github.com/gidyon/micros/utils/tls"
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
@@ -12,13 +11,16 @@ import (
 	"os"
 )
 
+// Options contains parameters for NewClientConn
+type Options struct {
+	Port               int
+	DialOptions        []grpc.DialOption
+	UnaryInterceptors  []grpc.UnaryClientInterceptor
+	StreamInterceptors []grpc.StreamClientInterceptor
+}
+
 // NewClientConn dials to a grpc server
-func NewClientConn(
-	cfg *config.Config,
-	dialOptions []grpc.DialOption,
-	unaryInterceptors []grpc.UnaryClientInterceptor,
-	streamInterceptors []grpc.StreamClientInterceptor,
-) (*grpc.ClientConn, error) {
+func NewClientConn(opt *Options) (*grpc.ClientConn, error) {
 	// Parse client TLS config
 	clientTLSConfig, err := microtls.ClientConfig()
 	if err != nil {
@@ -29,7 +31,7 @@ func NewClientConn(
 		grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)),
 	}
 
-	for _, dialOption := range dialOptions {
+	for _, dialOption := range opt.DialOptions {
 		dopts = append(dopts, dialOption)
 	}
 
@@ -46,12 +48,12 @@ func NewClientConn(
 	}
 
 	unaryClientInterceptors := []grpc.UnaryClientInterceptor{waitForReadyUnaryInterceptor}
-	for _, unaryInterceptor := range unaryInterceptors {
+	for _, unaryInterceptor := range opt.UnaryInterceptors {
 		unaryClientInterceptors = append(unaryClientInterceptors, unaryInterceptor)
 	}
 
 	streamClientInterceptors := make([]grpc.StreamClientInterceptor, 0)
-	for _, streamInterceptor := range streamInterceptors {
+	for _, streamInterceptor := range opt.StreamInterceptors {
 		streamClientInterceptors = append(streamClientInterceptors, streamInterceptor)
 	}
 
@@ -68,7 +70,7 @@ func NewClientConn(
 
 	// Enable Retries
 	os.Setenv("GRPC_GO_RETRY", "on")
-	address := fmt.Sprintf("localhost:%d", cfg.ServicePort())
+	address := fmt.Sprintf("localhost:%d", opt.Port)
 
 	clientConn, err := grpc.Dial(address, dopts...)
 	if err != nil {
