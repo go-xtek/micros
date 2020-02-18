@@ -12,8 +12,8 @@ import (
 	"os"
 )
 
-// NewGRPCClientConn dials to a grpc server
-func NewGRPCClientConn(
+// NewClientConn dials to a grpc server
+func NewClientConn(
 	cfg *config.Config,
 	dialOptions []grpc.DialOption,
 	unaryInterceptors []grpc.UnaryClientInterceptor,
