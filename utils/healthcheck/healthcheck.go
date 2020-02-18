@@ -51,6 +51,7 @@ func RegisterProbe(opt *ProbeOptions) http.HandlerFunc {
 		}
 	}
 
+	// Check only service or app internals and not external components
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Handle any panic
 		defer func() {
@@ -135,12 +136,12 @@ func RegisterProbe(opt *ProbeOptions) http.HandlerFunc {
 		// wait until all dials complete
 		wg.Wait()
 
-		// Check errors
-		if len(errs) != 0 {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.WriteHeader(http.StatusPreconditionFailed)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusOK)
 
+		// Check errors from external components
+		if len(errs) != 0 {
 			for _, err := range errs {
 				fmt.Fprintln(w, err)
 			}
