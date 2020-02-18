@@ -11,8 +11,8 @@ import (
 	"os"
 )
 
-// Options contains parameters for NewClientConn
-type Options struct {
+// ClientParams contains parameters for NewClientConn
+type ClientParams struct {
 	Port               int
 	DialOptions        []grpc.DialOption
 	UnaryInterceptors  []grpc.UnaryClientInterceptor
@@ -20,7 +20,7 @@ type Options struct {
 }
 
 // NewClientConn dials to a grpc server
-func NewClientConn(opt *Options) (*grpc.ClientConn, error) {
+func NewClientConn(opt *ClientParams) (*grpc.ClientConn, error) {
 	// Parse client TLS config
 	clientTLSConfig, err := microtls.ClientConfig()
 	if err != nil {
