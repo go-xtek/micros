@@ -30,21 +30,8 @@ func (service *Service) Run(ctx context.Context, insecure bool) error {
 	// Registration of service endpoint
 	service.httpMux.Handle(service.baseEndpoint, service.runtimeMux)
 
-	// Support CORS
-	if service.enableCORS {
-		service.httpMiddlewares = append(service.httpMiddlewares, http_middleware.SupportCORS)
-	}
-
-	handler := service.HTTPHandler()
-
 	// Apply middlewares
-	if len(service.httpMiddlewares) > 1 {
-		wrapped := handler
-		for i := len(service.httpMiddlewares) - 1; i >= 0; i-- {
-			wrapped = service.httpMiddlewares[i](wrapped)
-		}
-		handler = wrapped
-	}
+	handler := http_middleware.Apply(service.Handler(), service.httpMiddlewares...)
 
 	// the grpcHandlerFunc takes an grpc server and a http muxer and will
 	// route the request to the right place at runtime.
@@ -131,7 +118,7 @@ func grpcHandlerFunc(grpcServer *grpc.Server, otherHandler http.Handler) http.Ha
 // When this method has been called, subsequent calls to add interceptors and/or options will not update the service
 func (service *Service) InitGRPC(ctx context.Context) error {
 	// client connection for the reverse gateway
-	clientConn, err := service_grpc.NewGRPCClientConn(
+	clientConn, err := service_grpc.NewClientConn(
 		service.cfg,
 		service.dialOptions,
 		service.gRPCUnaryClientInterceptors,
@@ -144,8 +131,11 @@ func (service *Service) InitGRPC(ctx context.Context) error {
 	service.clientConn = clientConn
 
 	// create gRPC server for service
-	grpcSrv, err := service_grpc.NewGRPCServer(
-		ctx, service.cfg, service.gRPCUnaryInterceptors, service.gRPCStreamInterceptors,
+	grpcSrv, err := service_grpc.NewServer(
+		service.cfg,
+		service.serverOptions,
+		service.gRPCUnaryInterceptors,
+		service.gRPCStreamInterceptors,
 	)
 	if err != nil {
 		return err

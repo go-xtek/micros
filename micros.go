@@ -8,6 +8,7 @@ import (
 	"github.com/gidyon/config"
 	"github.com/gidyon/logger"
 	"github.com/gidyon/micros/pkg/conn"
+	http_middleware "github.com/gidyon/micros/pkg/http"
 	microtls "github.com/gidyon/micros/utils/tls"
 	"github.com/go-redis/redis"
 	"github.com/jinzhu/gorm"
@@ -29,19 +30,18 @@ type Service struct {
 	redisClient                  *redis.Client
 	rediSearchClient             *redisearch.Client
 	baseEndpoint                 string
-	httpMiddlewares              []httpMiddleware
+	httpMiddlewares              []http_middleware.Middleware
 	httpMux                      *http.ServeMux
 	runtimeMux                   *runtime.ServeMux
 	clientConn                   *grpc.ClientConn
 	gRPCServer                   *grpc.Server
 	externalServicesConn         map[string]*grpc.ClientConn
+	serverOptions                []grpc.ServerOption
 	gRPCUnaryInterceptors        []grpc.UnaryServerInterceptor
 	gRPCStreamInterceptors       []grpc.StreamServerInterceptor
-	serverOption                 []grpc.ServerOption
+	dialOptions                  []grpc.DialOption
 	gRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor
 	grpcStreamClientInterceptors []grpc.StreamClientInterceptor
-	dialOptions                  []grpc.DialOption
-	enableCORS                   bool
 }
 
 // NewService create a new micro-service based on the options passed in config
@@ -135,53 +135,40 @@ func NewService(ctx context.Context, cfg *config.Config) (*Service, error) {
 		}
 	}
 
-	// Update the rest client
-	runtimeMux := newRuntimeMux()
-
 	return &Service{
 		cfg:                          cfg,
 		db:                           db,
 		sqlDB:                        sqlDB,
 		redisClient:                  redisClient,
 		rediSearchClient:             rediSearchClient,
-		httpMiddlewares:              make([]httpMiddleware, 0),
-		runtimeMux:                   runtimeMux,
+		httpMiddlewares:              make([]http_middleware.Middleware, 0),
+		runtimeMux:                   newRuntimeMux(),
 		externalServicesConn:         externalServices,
 		gRPCUnaryInterceptors:        make([]grpc.UnaryServerInterceptor, 0),
 		gRPCStreamInterceptors:       make([]grpc.StreamServerInterceptor, 0),
-		serverOption:                 make([]grpc.ServerOption, 0),
+		serverOptions:                make([]grpc.ServerOption, 0),
 		gRPCUnaryClientInterceptors:  make([]grpc.UnaryClientInterceptor, 0),
 		grpcStreamClientInterceptors: make([]grpc.StreamClientInterceptor, 0),
 		dialOptions:                  make([]grpc.DialOption, 0),
 	}, nil
 }
 
-// HTTPHandler returns the handler for the service
-func (service *Service) HTTPHandler() http.Handler {
+// Handler returns the http handler for the service
+func (service *Service) Handler() http.Handler {
 	return service.httpMux
 }
 
-// HTTPMuxer returns the internal ServeMux of the service
-func (service *Service) HTTPMuxer() *http.ServeMux {
+// ServeMux returns the internal ServeMux of the service
+func (service *Service) ServeMux() *http.ServeMux {
 	return service.httpMux
 }
 
-// EnableCORS enables coss origin requests to service
-func (service *Service) EnableCORS() {
-	service.enableCORS = true
-}
-
-// DisableCORS disables cross origin requests on service
-func (service *Service) DisableCORS() {
-	service.enableCORS = false
-}
-
-// ServiceEndpoint ...
-func (service *Service) ServiceEndpoint(path string) {
+// SetServiceEndpoint sets the base path for the grpc to REST API proxies
+func (service *Service) SetServiceEndpoint(path string) {
 	service.baseEndpoint = path
 }
 
-// AddEndpoint ...
+// AddEndpoint binds a handler to the service at provided path
 func (service *Service) AddEndpoint(path string, handler http.Handler) {
 	if service.httpMux == nil {
 		service.httpMux = http.NewServeMux()
@@ -189,7 +176,7 @@ func (service *Service) AddEndpoint(path string, handler http.Handler) {
 	service.httpMux.Handle(path, handler)
 }
 
-// AddEndpointFunc ...
+// AddEndpointFunc works like http.HandleFunc
 func (service *Service) AddEndpointFunc(path string, handleFunc http.HandlerFunc) {
 	if service.httpMux == nil {
 		service.httpMux = http.NewServeMux()
@@ -197,10 +184,8 @@ func (service *Service) AddEndpointFunc(path string, handleFunc http.HandlerFunc
 	service.httpMux.HandleFunc(path, handleFunc)
 }
 
-type httpMiddleware func(http.Handler) http.Handler
-
-// AddHTTPMiddlewares adds middlewares to the service http handler
-func (service *Service) AddHTTPMiddlewares(middlewares ...httpMiddleware) {
+// AddHTTPMiddlewares adds http middlewares to the service
+func (service *Service) AddHTTPMiddlewares(middlewares ...http_middleware.Middleware) {
 	service.httpMiddlewares = append(service.httpMiddlewares, middlewares...)
 }
 
@@ -214,7 +199,7 @@ func (service *Service) AddGRPCDialOptions(dialOptions ...grpc.DialOption) {
 // AddGRPCServerOptions adds server options to gRPC server
 func (service *Service) AddGRPCServerOptions(serverOptions ...grpc.ServerOption) {
 	for _, serverOption := range serverOptions {
-		service.serverOption = append(service.serverOption, serverOption)
+		service.serverOptions = append(service.serverOptions, serverOption)
 	}
 }
 
@@ -282,8 +267,8 @@ func (service *Service) GRPCServer() *grpc.Server {
 	return service.gRPCServer
 }
 
-// DB returns a gorm db instance
-func (service *Service) DB() *gorm.DB {
+// GormDB returns a gorm db instance
+func (service *Service) GormDB() *gorm.DB {
 	return service.db
 }
 
